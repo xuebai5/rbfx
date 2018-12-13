@@ -6,11 +6,12 @@ environment:
   global:
     URHO3D_D3D11: ON
     URHO3D_ENABLE_ALL: ON
-    URHO3D_DOCS: OFF
+    URHO3D_DOCS: ON
   matrix:
     - BUILD_SHARED_LIBS: ON
     - BUILD_SHARED_LIBS: OFF
 before_build:
+  - ps: choco install -y doxygen.install graphviz
   - call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat"
   - mkdir "%APPVEYOR_BUILD_FOLDER%\Build"
   - cd "%APPVEYOR_BUILD_FOLDER%\Build"
