@@ -27,6 +27,7 @@
 #include <Urho3D/UI/Text.h>
 #include <Urho3D/UI/UI.h>
 
+#include "Urho3D/Scene/Serialization.h"
 #include "HelloWorld.h"
 
 #include <Urho3D/DebugNew.h>
@@ -39,8 +40,128 @@ HelloWorld::HelloWorld(Context* context) :
 {
 }
 
+class PolymorphicTest : public Serializable
+{
+    URHO3D_OBJECT(PolymorphicTest, Serializable);
+    virtual void Serialize(::cereal::BinaryInputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::BinaryOutputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::PortableBinaryInputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::PortableBinaryOutputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::XMLInputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::XMLOutputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::JSONInputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::JSONOutputArchive& ar) { ar(*this); }
+
+public:
+    explicit PolymorphicTest(Context* context) : Serializable(context)
+    {
+    }
+
+    static void RegisterObject(Context* context)
+    {
+        context->RegisterFactory<PolymorphicTest>();
+        URHO3D_ATTRIBUTE("Poly", int, poly_, 999, AM_DEFAULT);
+    }
+
+    int poly_ = 999;
+};
+
+class CerealTest : public Serializable
+{
+    URHO3D_OBJECT(CerealTest, Serializable);
+    virtual void Serialize(::cereal::BinaryInputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::BinaryOutputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::PortableBinaryInputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::PortableBinaryOutputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::XMLInputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::XMLOutputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::JSONInputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::JSONOutputArchive& ar) { ar(*this); }
+
+public:
+    explicit CerealTest(Context* context) : Serializable(context)
+    {
+    }
+
+    static void RegisterObject(Context* context)
+    {
+        context->RegisterFactory<CerealTest>();
+        URHO3D_ATTRIBUTE("Integer Foo", int, foo_, 0, AM_DEFAULT);
+    }
+
+    template<typename Archive>
+    void serialize(Archive& ar)
+    {
+        ar(::cereal::make_nvp(BaseClassName::GetTypeNameStatic().CString(), cereal::base_class<BaseClassName>(this))
+            ,CEREAL_NVP(hash_)
+            ,CEREAL_NVP(vector2_)
+            ,CEREAL_NVP(string_)
+            ,CEREAL_NVP(poly_)
+        );
+    }
+
+    int foo_ = 0;
+    Vector2 vector2_{12, 34};
+    StringHash hash_;
+    String string_{"foobar"};
+    SharedPtr<PolymorphicTest> poly_;
+};
+
+//URHO3D_SERIALIZABLE(CerealTest, 1);
+
+
 void HelloWorld::Start()
 {
+    CerealTest::RegisterObject(context_);
+    PolymorphicTest::RegisterObject(context_);
+
+    {
+        SharedPtr<CerealTest> test = context_->CreateObject<CerealTest>();
+        {
+            test->foo_ = 123;
+            test->hash_ = StringHash(555);
+            File file(context_, "/tmp/cereal_test.xml", FILE_WRITE);
+            test->Save(file, SF_XML);
+        }
+        {
+            test->foo_ = 1234;
+            test->hash_ = StringHash(555);
+            File file(context_, "/tmp/cereal_test.json", FILE_WRITE);
+            test->Save(file, SF_JSON);
+        }
+        {
+            test->foo_ = 12345;
+            test->hash_ = StringHash(555);
+            File file(context_, "/tmp/cereal_test.bin", FILE_WRITE);
+            test->Save(file, SF_BINARY);
+        }
+    }
+
+    {
+        SharedPtr<CerealTest> test = context_->CreateObject<CerealTest>();
+        {
+            File file(context_, "/tmp/cereal_test.xml");
+            test->Load(file, SF_XML);
+            assert(test->foo_ == 123);
+            assert(test->hash_.Value() == 555);
+        }
+        {
+            File file(context_, "/tmp/cereal_test.json");
+            test->Load(file, SF_JSON);
+            assert(test->foo_ == 1234);
+            assert(test->hash_.Value() == 555);
+        }
+        {
+            File file(context_, "/tmp/cereal_test.bin");
+            test->Load(file, SF_BINARY);
+            assert(test->foo_ == 12345);
+            assert(test->hash_.Value() == 555);
+        }
+    }
+
+
+    exit(0);
+
     // Execute base class startup
     Sample::Start();
 

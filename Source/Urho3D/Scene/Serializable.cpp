@@ -35,6 +35,7 @@
 #include "../Scene/ReplicationState.h"
 #include "../Scene/SceneEvents.h"
 #include "../Scene/Serializable.h"
+#include "../Scene/Serialization.h"
 
 #include "../DebugNew.h"
 
@@ -293,6 +294,155 @@ const Vector<AttributeInfo>* Serializable::GetNetworkAttributes() const
 {
     return networkState_ ? networkState_->attributes_ : context_->GetNetworkAttributes(GetType());
 }
+
+template<typename Archive>
+void Serializable::serialize(Archive& ar)
+{
+    const Vector<AttributeInfo>* attributes = GetAttributes();
+    if (!attributes)
+        return;
+
+    Variant value;
+    ::cereal::size_type size = attributes->Size();
+//    ar(::cereal::make_size_tag(size));
+    for (unsigned i = 0; i < size; ++i)
+    {
+        const AttributeInfo* attr = nullptr;
+        // Serialize attribute name hash in binary archives anyway. This adds support for out-of-order attribute
+        // loading for binary archives.
+//        if (!::cereal::traits::is_text_archive<Archive>::value)
+//        {
+//            // Serialize name hash as a substitute for ignored name in nvp.
+//            StringHash name = attr->name_;
+//            ar(name);
+//
+//            if (::cereal::traits::is_input_serializable<Serializable, Archive>::value && name != attr->name_)
+//            {
+//                // Binary archive is being loaded, but attributes are out of order. Find a correct attribute to work with.
+//                attr = nullptr;
+//                for (const AttributeInfo& attributeInfo : *attributes)
+//                {
+//                    if (name == attributeInfo.name_)
+//                    {
+//                        attr = &attributeInfo;
+//                        break;
+//                    }
+//                }
+//
+////                if (attr == nullptr)
+////                    // Attribute saved in the file no longer exists. Ignore it.
+////                    continue;
+//            }
+//        }
+//        else
+            attr = &attributes->At(i);
+
+        if (attr != nullptr)
+        {
+            if (!(attr->mode_ & AM_FILE) || (attr->mode_ & AM_FILEREADONLY) == AM_FILEREADONLY)
+                continue;
+
+            value = Variant(attr->type_);   // when attr missing this will fail
+        }
+
+        if (::cereal::traits::is_output_serializable<Serializable, Archive>::value)
+            // Serialize out registered attributes in order.
+            OnGetAttribute(*attr, value);
+
+        // Name will get ignored in binary archives, n oneed for special case.
+        ar(::cereal::make_nvp(attr->name_.CString(), value));
+
+        if (attr != nullptr)
+        {
+            if (::cereal::traits::is_input_serializable<Serializable, Archive>::value)
+                OnSetAttribute(*attr, value);
+        }
+    }
+}
+//template void Serializable::serialize<::cereal::BinaryInputArchive>(::cereal::BinaryInputArchive&, uint32_t);
+//template void Serializable::serialize<::cereal::BinaryOutputArchive>(::cereal::BinaryOutputArchive&, uint32_t);
+//template void Serializable::serialize<::cereal::PortableBinaryInputArchive>(::cereal::PortableBinaryInputArchive&, uint32_t);
+//template void Serializable::serialize<::cereal::PortableBinaryOutputArchive>(::cereal::PortableBinaryOutputArchive&, uint32_t);
+//template void Serializable::serialize<::cereal::XMLInputArchive>(::cereal::XMLInputArchive&, uint32_t);
+//template void Serializable::serialize<::cereal::XMLOutputArchive>(::cereal::XMLOutputArchive&, uint32_t);
+//template void Serializable::serialize<::cereal::JSONInputArchive>(::cereal::JSONInputArchive&, uint32_t);
+//template void Serializable::serialize<::cereal::JSONOutputArchive>(::cereal::JSONOutputArchive&, uint32_t);
+
+bool Serializable::Load(Deserializer& source, SerializationFormat format)
+{
+    ::cereal::size_type size = 1;
+    DeserializerStream stream(source);
+    std::istream ss(&stream);
+    switch (format)
+    {
+    case SF_BINARY:
+    {
+        ::cereal::BinaryInputArchive archive(ss);
+        Serialize(archive);
+        return true;
+    }
+    case SF_BINARY_PORTABLE:
+    {
+        ::cereal::PortableBinaryInputArchive archive(ss);
+        Serialize(archive);
+        return true;
+    }
+    case SF_XML:
+    {
+        ::cereal::XMLInputArchive archive(ss);
+        Serialize(archive);
+        return true;
+    }
+    case SF_JSON:
+    {
+        ::cereal::JSONInputArchive archive(ss);
+        archive(::cereal::make_size_tag(size));
+        Serialize(archive);
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+bool Serializable::Save(Serializer& dest, SerializationFormat format)
+{
+    ::cereal::size_type size = 1;
+    SerializerStream stream(dest);
+    std::ostream ss(&stream);
+    Context* context = context_;
+    switch (format)
+    {
+    case SF_BINARY:
+    {
+        ::cereal::UserDataAdapter<Context*, ::cereal::BinaryOutputArchive> archive(context, ss);
+        Serialize(archive);
+        return true;
+    }
+    case SF_BINARY_PORTABLE:
+    {
+        ::cereal::UserDataAdapter<Context*, ::cereal::PortableBinaryOutputArchive> archive(context, ss);
+        Serialize(archive);
+        return true;
+    }
+    case SF_XML:
+    {
+        ::cereal::UserDataAdapter<Context*, ::cereal::XMLOutputArchive> archive(context, ss);
+        Serialize(archive);
+        return true;
+    }
+    case SF_JSON:
+    {
+        ::cereal::UserDataAdapter<Context*, ::cereal::JSONOutputArchive> archive(context, ss);
+        archive(::cereal::make_size_tag(size));
+        Serialize(archive);
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
 
 bool Serializable::Load(Deserializer& source)
 {

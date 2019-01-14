@@ -22,6 +22,17 @@
 
 #pragma once
 
+#ifndef CEREAL_XML_STRING_VALUE
+#   define CEREAL_XML_STRING_VALUE "root"
+#endif
+#ifndef CEREAL_CLASS_VERSION_KEY_NAME
+#   define CEREAL_CLASS_VERSION_KEY_NAME "__version__"
+#endif
+#include <cereal/archives/binary.hpp>
+#include <cereal/archives/portable_binary.hpp>
+#include <cereal/archives/xml.hpp>
+#include <cereal/archives/json.hpp>
+
 #include "../Core/Attribute.h"
 #include "../Core/Object.h"
 
@@ -40,10 +51,31 @@ struct DirtyBits;
 struct NetworkState;
 struct ReplicationState;
 
+/// Format for file serialization.
+enum SerializationFormat
+{
+    /// Binary format. Ignores name:value pairs. Endianness-unaware, faster.
+    SF_BINARY,
+    /// Binary format. Ignores name:value pairs. Endianness-aware, but slower.
+    SF_BINARY_PORTABLE,
+    /// XML format.
+    SF_XML,
+    /// JSON format.
+    SF_JSON,
+};
+
 /// Base class for objects with automatic serialization through attributes.
 class URHO3D_API Serializable : public Object
 {
     URHO3D_OBJECT(Serializable, Object);
+    virtual void Serialize(::cereal::BinaryInputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::BinaryOutputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::PortableBinaryInputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::PortableBinaryOutputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::XMLInputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::XMLOutputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::JSONInputArchive& ar) { ar(*this); }
+    virtual void Serialize(::cereal::JSONOutputArchive& ar) { ar(*this); }
 
 public:
     /// Construct.
@@ -59,6 +91,14 @@ public:
     virtual const Vector<AttributeInfo>* GetAttributes() const;
     /// Return network replication attribute descriptions, or null if none defined.
     virtual const Vector<AttributeInfo>* GetNetworkAttributes() const;
+
+
+    /// Load from binary data. Return true if successful.
+    bool Load(Deserializer& source, SerializationFormat format);
+    /// Save as binary data. Return true if successful.
+    bool Save(Serializer& dest, SerializationFormat format);
+
+
     /// Load from binary data. Return true if successful.
     virtual bool Load(Deserializer& source);
     /// Save as binary data. Return true if successful.
@@ -147,6 +187,10 @@ private:
     void SetInstanceDefault(const String& name, const Variant& defaultValue);
     /// Get instance-level default value.
     Variant GetInstanceDefault(const String& name) const;
+    /// Serialization function.
+    template<typename Archive>
+    void serialize(Archive& ar);
+    friend class cereal::access;
 
     /// Attribute default value at each instance level.
     UniquePtr<VariantMap> instanceDefaultValues_;
@@ -275,3 +319,5 @@ namespace AttributeMetadata
 #define URHO3D_MIXED_ACCESSOR_ATTRIBUTE(name, getFunction, setFunction, typeName, defaultValue, mode) URHO3D_ACCESSOR_ATTRIBUTE(name, getFunction, setFunction, typeName, defaultValue, mode)
 
 }
+
+//URHO3D_SERIALIZABLE(Urho3D::Serializable, 1);

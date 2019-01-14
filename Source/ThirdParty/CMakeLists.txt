@@ -22,6 +22,7 @@
 
 add_subdirectory(LZ4)
 add_subdirectory(PugiXml)
+add_subdirectory(cereal)
 add_subdirectory(rapidjson)
 add_subdirectory(STB)
 add_subdirectory(IconFontCppHeaders)

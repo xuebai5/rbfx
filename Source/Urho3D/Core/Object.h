@@ -30,6 +30,7 @@
 #include "../Core/Variant.h"
 #include <functional>
 #include <utility>
+#include <type_traits>
 
 namespace Urho3D
 {

@@ -147,6 +147,7 @@ set (THIRD_PARTY_DEPENDENCIES
     FreeType
     JO
     LZ4
+    Cereal
     PugiXml
     rapidjson
     SDL
