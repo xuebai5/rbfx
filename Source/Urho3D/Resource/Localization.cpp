@@ -127,7 +127,7 @@ void Localization::SetLanguage(const String& language)
     SetLanguage(index);
 }
 
-String Localization::Get(const String& id)
+String Localization::Get(const String& id, int index)
 {
     if (id.Empty())
         return String::EMPTY;
@@ -136,10 +136,16 @@ String Localization::Get(const String& id)
         URHO3D_LOGWARNING("Localization::Get(id): no loaded languages");
         return id;
     }
-    String result = strings_[StringHash(GetLanguage())][StringHash(id)];
+    if (index >= (int)languages_.Size())
+    {
+        URHO3D_LOGWARNING("Localization::Get(id): invalid language index");
+        return id;
+    }
+
+    String result = strings_[index < 0 ? GetLanguage() : languages_[index]][StringHash(id)];
     if (result.Empty())
     {
-        URHO3D_LOGWARNING("Localization::Get(\"" + id + "\") not found translation, language=\"" + GetLanguage() + "\"");
+        URHO3D_LOGTRACE("Localization::Get(\"" + id + "\") not found translation, language=\"" + GetLanguage() + "\"");
         return id;
     }
     return result;
@@ -151,20 +157,6 @@ void Localization::Reset()
     languageIndex_ = -1;
     strings_.Clear();
 }
-
-void Localization::LoadJSONFile(const String& name, const String language)
-{
-    auto* cache = GetSubsystem<ResourceCache>();
-    auto* jsonFile = cache->GetResource<JSONFile>(name);
-    if (jsonFile)
-    {
-        if (language.Empty())
-            LoadMultipleLanguageJSON(jsonFile->GetRoot());
-        else
-            LoadSingleLanguageJSON(jsonFile->GetRoot(), language);
-    }
-}
-
 
 void Localization::LoadMultipleLanguageJSON(const JSONValue& source)
 {
@@ -214,40 +206,52 @@ void Localization::LoadMultipleLanguageJSON(const JSONValue& source)
     }
 }
 
-void Localization::LoadSingleLanguageJSON(const JSONValue& source, const String& language)
+void Localization::LoadSingleLanguageJSON(const JSONValue& source)
 {
+    String defaultLanguage;
     for (JSONObject::ConstIterator i = source.Begin(); i != source.End(); ++i)
     {
         String id = i->first_;
         if (id.Empty())
         {
-            URHO3D_LOGWARNING("Localization::LoadSingleLanguageJSON(source, language): string ID is empty");
+            URHO3D_LOGWARNING("Localization::LoadJSON(source): string ID is empty");
             continue;
         }
-        const JSONValue& value = i->second_;
-        if (value.IsString())
+        const JSONValue& langs = i->second_;
+        for (JSONObject::ConstIterator j = langs.Begin(); j != langs.End(); ++j)
         {
-            if (value.GetString().Empty())
+            const String& lang = j->first_;
+            if (lang.Empty())
             {
-                URHO3D_LOGWARNING(
-                        "Localization::LoadSingleLanguageJSON(source, language): translation is empty, string ID=\"" + id +
-                        "\", language=\"" + language + "\"");
+                URHO3D_LOGWARNING("Localization::LoadJSON(source): language name is empty, string ID=\"" + id + "\"");
                 continue;
             }
-            if (strings_[StringHash(language)][StringHash(id)] != String::EMPTY)
+            const String& string = j->second_.GetString();
+            if (string.Empty())
             {
                 URHO3D_LOGWARNING(
-                        "Localization::LoadSingleLanguageJSON(source, language): override translation, string ID=\"" + id +
-                        "\", language=\"" + language + "\"");
+                    "Localization::LoadJSON(source): translation is empty, string ID=\"" + id + "\", language=\"" + lang + "\"");
+                continue;
             }
-            strings_[StringHash(language)][StringHash(id)] = value.GetString();
-            if (!languages_.Contains(language))
-                languages_.Push(language);
+            if (strings_[StringHash(lang)][StringHash(id)] != String::EMPTY)
+            {
+                URHO3D_LOGWARNING(
+                    "Localization::LoadJSON(source): override translation, string ID=\"" + id + "\", language=\"" + lang + "\"");
+            }
+            strings_[StringHash(lang)][StringHash(id)] = string;
+            if (!languages_.Contains(lang))
+            {
+                languages_.Push(lang);
+                if (defaultLanguage.Empty())
+                    defaultLanguage = lang;
+            }
+            if (languageIndex_ == -1)
+                languageIndex_ = 0;
         }
-        else
-            URHO3D_LOGWARNING(
-                    "Localization::LoadSingleLanguageJSON(source, language): failed to load value, string ID=\"" + id +
-                    "\", language=\"" + language + "\"");
+
+        // Default language is not translated. Use IDs as strings.
+        if (!strings_[StringHash(defaultLanguage)].Contains(StringHash(id)))
+            strings_[StringHash(defaultLanguage)][StringHash(id)] = id;
     }
 }
 
